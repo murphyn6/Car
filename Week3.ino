@@ -1,26 +1,34 @@
-/* Run Wheels and Servo
+/* Parker Murphy and Frederick Levins
  */
- const int RSPD1 = 150;        //Right Wheel PWM.  Change this value so your car will go roughly straight
- const int LSPD1 = 115;        //Left Wheel PWM
+ #include <Servo.h>
+ #include <Wire.h> // Library for I2C communication
+ #include <LiquidCrystal_I2C.h> // Library for LCD
+ #define DECODE_NEC
+ #include <IRremote.hpp>
+ #define IR_Pin 10
+ #define forward 24
+ #define backward 82
+ #define stop 28
+
+ const int RSPD1 = 170;        //Right Wheel PWM.  Change this value so your car will go roughly straight
+ const int LSPD1 = 150;        //Left Wheel PWM
  const int RSPD2 = 150;        //Right Wheel PWM
  const int LSPD2 = 150;        //Left Wheel PWM
  
- const int LWhFwdPin = 9;   
- const int LWhBwdPin = 8;
- const int LWhPWMPin = 11;
+ const int LWhFwdPin = A0;//10;   
+ const int LWhBwdPin = 7;//A5;
+ const int LWhPWMPin = 6;//11;
 
- const int RWhFwdPin = 7;
- const int RWhBwdPin = 6;
+ const int RWhFwdPin = A1;//7;
+ const int RWhBwdPin = 4;//6;
  const int RWhPWMPin = 5; 
 
  const int leftInterupt = 3;
  const int rightInterupt = 2;
 
- const int ultraServoPin = 4;
- #include <Servo.h>
- #include <Wire.h> // Library for I2C communication
- #include <LiquidCrystal_I2C.h> // Library for LCD
- Servo ultraServo;  // servo object to control ultrasonic servo
+ const int myServoPin = 11;
+
+ Servo myServo;  // servo object to control ultrasonic servo
  LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
 
  int gain=12;
@@ -28,11 +36,13 @@
  volatile long cntrL, cntrR;
  volatile long LIntTime, RIntTime;
  long stopTime;
+ int code = 0;
 
 void setup() 
 {
   Serial.begin(9600);
-  ultraServo.attach(ultraServoPin);
+  myServo.attach(myServoPin);
+  myServo.write(90);
   lcd.init();
   lcd.backlight();  
 
@@ -50,21 +60,22 @@ void setup()
   digitalWrite(RWhFwdPin,LOW);
   digitalWrite(RWhBwdPin,LOW);
   digitalWrite(RWhPWMPin,LOW);
-  pinMode(leftInterupt, INPUT_PULLUP);
-  pinMode(rightInterupt, INPUT_PULLUP);
-  attachInterrupt(leftInterupt, leftWhlCnt, CHANGE);
-  attachInterrupt(rightInterupt, rightWhlCnt, CHANGE);
+
+  attachInterrupt(digitalPinToInterrupt(leftInterupt), leftWhlCnt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(rightInterupt), rightWhlCnt, CHANGE);
    
   cntrR = 0;
   cntrL = 0;
   LIntTime = 0;
   RIntTime = 0;
  
-  digitalWrite(LWhFwdPin,HIGH);    //run left wheel forward
-  digitalWrite(RWhFwdPin,HIGH);    //run right wheel forward
+  //digitalWrite(LWhFwdPin,HIGH);    //run left wheel forward
+  //digitalWrite(RWhFwdPin,HIGH);    //run right wheel forward
   analogWrite(RWhPWMPin,RSPD1);     //turn on wheels 
   analogWrite(LWhPWMPin,LSPD1);
-  stopTime = micros() + 5*1000000; 
+  //stopTime = micros() + 10*1000000; 
+  pinMode(IR_Pin, INPUT);
+  IrReceiver.begin(IR_Pin, ENABLE_LED_FEEDBACK);
 }
 
 void loop() 
@@ -74,36 +85,60 @@ void loop()
   tmpLcntr = cntrL;
   tmpRcntr = cntrR;
   delCntr = abs(tmpLcntr - tmpRcntr);
-  Serial.print("Left Counter: ");
-  Serial.println(tmpLcntr);
-  Serial.print("Right Counter: ");
-  Serial.println(tmpLcntr);
-  if(micros() > stopTime)
-  {
-    analogWrite(RWhPWMPin,0);
-    analogWrite(LWhPWMPin,0);
-    while(true)
-    {
-    }
-  }
-  if(tmpLcntr > tmpRcntr) // Change code within bracket
+  if(tmpLcntr > tmpRcntr)
   {
     analogWrite(RWhPWMPin,RSPD1);
     analogWrite(LWhPWMPin,max(LSPD1-int(gain*delCntr+.5),0));
-    //Serial.println("adjusting right");
   }
-  else if(tmpLcntr<tmpRcntr) // Change code within braket
+  else if(tmpLcntr<tmpRcntr)
   {
     analogWrite(LWhPWMPin,LSPD1);
     analogWrite(RWhPWMPin,max(RSPD1-int(gain*delCntr+.5),0));
-    //Serial.println("adjusting left");
   }
   else
   {
     analogWrite(RWhPWMPin,RSPD1);
     analogWrite(LWhPWMPin,LSPD1);
-    //Serial.println("adjusted");
   }
+  if (IrReceiver.decode()) {
+    cntrL=0;
+    cntrR=0;
+    remoteDrive();
+  }
+}
+
+void remoteDrive() {
+  Serial.print("code=");
+  code = IrReceiver.decodedIRData.command;
+  Serial.println(code);
+  switch (code) {
+    case forward:
+      digitalWrite(LWhFwdPin, HIGH);
+      digitalWrite(LWhBwdPin, LOW);
+      digitalWrite(RWhFwdPin, HIGH);
+      digitalWrite(RWhBwdPin, LOW);
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,RSPD1);
+      break;
+    case backward:
+      digitalWrite(LWhFwdPin, LOW);
+      digitalWrite(LWhBwdPin, HIGH);
+      digitalWrite(RWhFwdPin, LOW);
+      digitalWrite(RWhBwdPin, HIGH);
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,RSPD1);
+      break;
+    case stop:
+      digitalWrite(LWhFwdPin, LOW);
+      digitalWrite(LWhBwdPin, LOW);
+      digitalWrite(RWhFwdPin, LOW);
+      digitalWrite(RWhBwdPin, LOW);
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,RSPD1);
+      break;
+    }
+  IrReceiver.resume();
+
 }
 
 void leftWhlCnt()
