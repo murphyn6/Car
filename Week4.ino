@@ -1,0 +1,221 @@
+/* Parker Murphy and Frederick Levins
+ */
+ #include <Servo.h>
+ #include <Wire.h> // Library for I2C communication
+ #include <LiquidCrystal_I2C.h> // Library for LCD
+ #define DECODE_NEC
+ #include <IRremote.hpp>
+ #define IR_Pin 10
+ #define forward 24
+ #define backward 82
+ #define stop 28
+ #define left 8
+ #define right 90
+
+ // Wiring: SDA pin is connected to A4 and SCL pin to A5. for US
+
+ const int RSPD1 = 170;        //Right Wheel PWM.  Change this value so your car will go roughly straight
+ const int LSPD1 = 150;        //Left Wheel PWM
+ const int RSPD2 = 150;        //Right Wheel PWM
+ const int LSPD2 = 150;        //Left Wheel PWM
+ 
+ const int LWhFwdPin = A0;//10;   
+ const int LWhBwdPin = 7;//A5;
+ const int LWhPWMPin = 6;//11;
+
+ const int RWhFwdPin = A1;//7;
+ const int RWhBwdPin = 4;//6;
+ const int RWhPWMPin = 5; 
+
+ const int leftInterupt = 3;
+ const int rightInterupt = 2;
+
+ const int myServoPin = 11;
+
+
+ const int pingPin = A2; // trigger
+ const int echoPin = A3; // echo
+
+ Servo myServo;  // servo object to control ultrasonic servo
+ LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
+
+ int gain=12;
+ int delCntr=0; 
+ volatile long cntrL, cntrR;
+ volatile long LIntTime, RIntTime;
+
+ long stopTime;
+ int code = 0;
+ int leftTurn = 0;
+// week 4
+  const long cntrPerDeg = .83; // 74.84 / 90
+  const long cntrT = 90 * cntrPerDeg + 0.5; 
+
+void setup() 
+{
+  myServo.attach(myServoPin);
+  myServo.write(90);
+
+
+  pinMode(LWhFwdPin,OUTPUT);
+  pinMode(LWhBwdPin,OUTPUT);
+  pinMode(LWhPWMPin,OUTPUT);
+  pinMode(RWhFwdPin,OUTPUT);
+  pinMode(RWhBwdPin,OUTPUT);
+  pinMode(RWhPWMPin,OUTPUT);
+
+  digitalWrite(LWhFwdPin,LOW);
+  digitalWrite(LWhBwdPin,LOW);
+  digitalWrite(LWhPWMPin,LOW);
+  
+  digitalWrite(RWhFwdPin,LOW);
+  digitalWrite(RWhBwdPin,LOW);
+  digitalWrite(RWhPWMPin,LOW);
+
+  attachInterrupt(digitalPinToInterrupt(leftInterupt), leftWhlCnt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(rightInterupt), rightWhlCnt, CHANGE);
+   
+  cntrR = 0;
+  cntrL = 0;
+  LIntTime = 0;
+  RIntTime = 0;
+
+  analogWrite(RWhPWMPin,RSPD1);
+  analogWrite(LWhPWMPin,LSPD1);
+  pinMode(IR_Pin, INPUT);
+  IrReceiver.begin(IR_Pin, ENABLE_LED_FEEDBACK);
+
+  //Week 4 US
+  pinMode(pingPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.home();
+  lcd.clear();
+    Serial.begin(9600);  
+}
+
+void loop() 
+{
+  
+  // Week 4 Ultra
+  long duration, inches;
+  digitalWrite(pingPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(pingPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(pingPin, LOW);
+  delay(200);
+
+  duration = pulseIn(echoPin, HIGH);
+  inches = microsecondsToInches(duration);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Inches: ");
+  lcd.print(inches);
+  Serial.print("Duration: ");
+  Serial.println(duration);
+  Serial.print("Inches: ");
+  Serial.println(inches);
+
+
+  long tmpLcntr, tmpRcntr;
+  tmpLcntr = cntrL;
+  tmpRcntr = cntrR;
+  delCntr = abs(tmpLcntr - tmpRcntr);
+  if(tmpLcntr > tmpRcntr)
+  {
+    if(leftTurn == 0){
+    analogWrite(RWhPWMPin,RSPD1);
+    analogWrite(LWhPWMPin,max(LSPD1-int(gain*delCntr+.5),0));
+    }
+  }
+  else if(tmpLcntr < tmpRcntr) {
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,max(RSPD1-int(gain*delCntr+.5),0));
+  }
+  else if(tmpLcntr==tmpRcntr)
+  {
+    analogWrite(RWhPWMPin,RSPD1);
+    analogWrite(LWhPWMPin,LSPD1);
+    if(leftTurn==1){
+    leftTurn=0;
+    analogWrite(RWhPWMPin,0);
+    analogWrite(LWhPWMPin,0);
+    }
+  }
+
+  if (IrReceiver.decode()) {
+    cntrL=0;
+    cntrR=0;
+    Serial.print("code=");
+  code = IrReceiver.decodedIRData.command;
+  Serial.println(code);
+  switch (code) {
+    case forward:
+      leftTurn=0;
+      digitalWrite(LWhFwdPin, HIGH);
+      digitalWrite(LWhBwdPin, LOW);
+      digitalWrite(RWhFwdPin, HIGH);
+      digitalWrite(RWhBwdPin, LOW);
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,RSPD1);
+      break;
+    case backward:
+      leftTurn=0;
+      digitalWrite(LWhFwdPin, LOW);
+      digitalWrite(LWhBwdPin, HIGH);
+      digitalWrite(RWhFwdPin, LOW);
+      digitalWrite(RWhBwdPin, HIGH);
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,RSPD1);
+      break;
+    case left: //8 and 90
+      leftTurn=1;
+      analogWrite(LWhPWMPin,0);
+      analogWrite(RWhPWMPin,RSPD1);
+      digitalWrite(LWhFwdPin, HIGH);
+      digitalWrite(RWhFwdPin, HIGH); 
+      cntrR = 0;
+      cntrL = 18;//cntrT;
+    break;
+    case stop:
+      leftTurn=0;
+      digitalWrite(LWhFwdPin, LOW);
+      digitalWrite(LWhBwdPin, LOW);
+      digitalWrite(RWhFwdPin, LOW);
+      digitalWrite(RWhBwdPin, LOW);
+      analogWrite(LWhPWMPin,LSPD1);
+      analogWrite(RWhPWMPin,RSPD1);
+      break;
+    }
+  IrReceiver.resume();
+
+
+  }
+}
+void leftWhlCnt()
+{
+  long intTime = micros();
+  if(intTime > LIntTime + 1000L)
+  {
+    LIntTime = intTime;
+    cntrL++;
+  }
+}
+
+void rightWhlCnt()  // Complete this ISR
+{
+  long intTime = micros();
+  if(intTime > RIntTime + 1000L)
+  {
+    RIntTime = intTime;
+    cntrR++;
+  }
+}
+
+
+long microsecondsToInches(long microseconds) {
+  return microseconds / 74 / 2;
+}
