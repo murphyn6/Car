@@ -46,19 +46,16 @@
 
  long stopTime;
  int code = 0;
- int leftTurn = 0;
  int rndm=1;
 // week 4
-  long cntrPerDeg = .83; // 74.84 / 90
-  long cntrT = 90 * cntrPerDeg + 0.5; 
+  //long cntrPerDeg = .83; // 74.84 / 90
+  //long cntrT = 90 * cntrPerDeg + 0.5; 
 
 void setup() 
 {
   Serial.begin(9600);
   myServo.attach(myServoPin);
   myServo.write(90);
-  lcd.init();
-  lcd.backlight();  
 
   pinMode(LWhFwdPin,OUTPUT);
   pinMode(LWhBwdPin,OUTPUT);
@@ -88,7 +85,9 @@ void setup()
   analogWrite(RWhPWMPin,RSPD1);     //turn on wheels 
   analogWrite(LWhPWMPin,LSPD1);
   //stopTime = micros() + 10*1000000; 
+  
   pinMode(IR_Pin, INPUT);
+  
   IrReceiver.begin(IR_Pin, ENABLE_LED_FEEDBACK);
 
   //Week 4 US
@@ -104,8 +103,6 @@ void setup()
 
 void loop() 
 {
-
-  /*
   // Week 4 Ultra
   long duration, inches;
   digitalWrite(pingPin, LOW);
@@ -116,7 +113,7 @@ void loop()
   delay(100);
 
 
-  duration = pulseIn(pingPin, HIGH);
+  duration = pulseIn(echoPin, HIGH);
   inches = microsecondsToInches(duration);
   if (inches <= 4) {
     hardTurnLeft();
@@ -127,7 +124,6 @@ void loop()
   lcd.setCursor(0,0);
   lcd.print("Inches: ");
   lcd.print(inches);
-  */
   //delay(2000);
   //hardTurnLeft();
 // End Week 4 Ultra
@@ -136,74 +132,22 @@ void loop()
   tmpLcntr = cntrL;
   tmpRcntr = cntrR;
   delCntr = abs(tmpLcntr - tmpRcntr);
-  if(tmpLcntr > tmpRcntr)
-  {
+  if(tmpLcntr > tmpRcntr) {
     analogWrite(RWhPWMPin,RSPD1);
     analogWrite(LWhPWMPin,max(LSPD1-int(gain*delCntr+.5),0));
   }
-  else if(tmpLcntr > tmpRcntr) {
-    if(leftTurn == 1) {
-      rndm=1;
-    }
-    else{
-      //analogWrite(LWhPWMPin,LSPD1);
-      analogWrite(RWhPWMPin,max(RSPD1-int(gain*delCntr+.5),0));
-    }
+  else if(tmpLcntr < tmpRcntr) {
+    analogWrite(LWhPWMPin,LSPD1);
+    analogWrite(RWhPWMPin,max(RSPD1-int(gain*delCntr+.5),0));
   }
-  else if(tmpLcntr==tmpRcntr)
-  {
-    leftTurn=0;
+  else {
     analogWrite(RWhPWMPin,RSPD1);
     analogWrite(LWhPWMPin,LSPD1);
   }
   if (IrReceiver.decode()) {
-    cntrL=0;
-    cntrR=0;
-    Serial.print("code=");
-  code = IrReceiver.decodedIRData.command;
-  Serial.println(code);
-  switch (code) {
-    case forward:
-      digitalWrite(LWhFwdPin, HIGH);
-      digitalWrite(LWhBwdPin, LOW);
-      digitalWrite(RWhFwdPin, HIGH);
-      digitalWrite(RWhBwdPin, LOW);
-      analogWrite(LWhPWMPin,LSPD1);
-      analogWrite(RWhPWMPin,RSPD1);
-      break;
-    case backward:
-      digitalWrite(LWhFwdPin, LOW);
-      digitalWrite(LWhBwdPin, HIGH);
-      digitalWrite(RWhFwdPin, LOW);
-      digitalWrite(RWhBwdPin, HIGH);
-      analogWrite(LWhPWMPin,LSPD1);
-      analogWrite(RWhPWMPin,RSPD1);
-      break;
-    case left: //8 and 90
-      leftTurn=1;
-      //while (tmpRcntr < (tmpLcntr + cntrT)) { 
-      analogWrite(LWhPWMPin,0);
-      analogWrite(RWhPWMPin,RSPD1);
-      digitalWrite(LWhFwdPin, HIGH);
-      digitalWrite(RWhFwdPin, HIGH); 
-      cntrR = 0;
-      cntrL = cntrT;
-      //}
-      //digitalWrite(LWhFwdPin, LOW);
-      //digitalWrite(RWhFwdPin, LOW);
-    break;
-    case stop:
-      digitalWrite(LWhFwdPin, LOW);
-      digitalWrite(LWhBwdPin, LOW);
-      digitalWrite(RWhFwdPin, LOW);
-      digitalWrite(RWhBwdPin, LOW);
-      analogWrite(LWhPWMPin,LSPD1);
-      analogWrite(RWhPWMPin,RSPD1);
-      break;
-    }
-  IrReceiver.resume();
-
-
+    cntrL = 0;
+    cntrR = 0;
+    remoteDrive();
   }
 }
 
@@ -263,28 +207,6 @@ void rightWhlCnt()  // Complete this ISR
   }
 }
 
-/*
-// Week 4
-void hardTurnRight() { 
-  volatile long oldcntrL = cntrL;
-  volatile long oldcntrR = cntrR;
-  cntrL = 0;
-  cntrR = 0;
-
-  // calcs 
-  long cntrPerDeg = .83; //change 
-  long cntrT = 90 * cntrPerDeg + 0.5; 
-
-
-  while (cntrL < cntrT) { 
-    analogWrite(RWhPWMPin,0);
-    analogWrite(LWhPWMPin,LSPD1); 
-  }
-
-  cntrL = oldcntrL;
-  cntrR = oldcntrR;
-}
-
 // Week 4
 void hardTurnLeft() { 
   volatile long oldcntrL = cntrL;
@@ -298,20 +220,19 @@ void hardTurnLeft() {
   long cntrT = 90 * cntrPerDeg + 0.5; 
 
 
-  while (cntrR < (cntrL + cntrT)) { 
+  while (cntrR < (cntrL + 25)) {  //cntrT
     analogWrite(LWhPWMPin,0);
     analogWrite(RWhPWMPin,RSPD1);
-    digitalWrite(LWhFwdPin, HIGH);
-    digitalWrite(RWhFwdPin, HIGH); 
+    //digitalWrite(LWhFwdPin, HIGH);
+    //digitalWrite(RWhFwdPin, HIGH); 
 
   }
 
-  digitalWrite(LWhFwdPin, LOW);
-  digitalWrite(RWhFwdPin, LOW);
+  //digitalWrite(LWhFwdPin, LOW);
+  //digitalWrite(RWhFwdPin, LOW);
   cntrL = oldcntrL;
   cntrR = oldcntrR;
 }
-*/
 // Week 4
 
 // keep for ultra
