@@ -11,8 +11,8 @@
 #define left 8
 #define right 90
 
-const int RSPD1 = 175;  //Right Wheel PWM.  Change this value so your car will go roughly straight
-const int LSPD1 = 145;  //Left Wheel PWM
+const int RSPD1 = 160;  //Right Wheel PWM.  Change this value so your car will go roughly straight
+const int LSPD1 = 140;  //Left Wheel PWM
 const int RSPD2 = 150;  //Right Wheel PWM
 const int LSPD2 = 150;  //Left Wheel PWM
 
@@ -114,7 +114,7 @@ void loop() {
   tmpRcntr = cntrR;
   delCntr = abs(tmpLcntr - tmpRcntr);
 
-  if(inches<10 && inches!=0){
+  if(inches<7 && inches!=0){
     stopCar();
     delay(1000);
     turnLeft();
@@ -188,7 +188,7 @@ void turnLeft() {
   oldcntrR = cntrR;
   cntrL = 0;
   cntrR = 0;
-  while (cntrR < (cntrL + 35)) {
+  while (cntrR < (cntrL + 40)) {
     analogWrite(RWhPWMPin, RSPD1);
     analogWrite(LWhPWMPin, 0);
   }
